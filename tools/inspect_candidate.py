@@ -44,7 +44,7 @@ def inspect(bundle, output):
         if not label.startswith("codesign-"):
             assert p.returncode == 0, label
     assert results["architectures"]["output"].split() == ["x86_64"], "Architettura inattesa"
-    assert "KEXT_BUNDLE" in results["macho-header"]["output"], "Tipo Mach-O inatteso"
+    assert "KEXTBUNDLE" in results["macho-header"]["output"], "Tipo Mach-O inatteso"
     hashes = []
     for path in sorted(bundle.rglob("*")):
         assert not path.is_symlink(), "Symlink inatteso nel candidato"
