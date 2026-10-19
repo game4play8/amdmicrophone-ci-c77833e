@@ -1,0 +1,60 @@
+# Inactive local proposal. Publishing this file and dispatching it require authorization.
+name: AMDMicrophone pinned Release preparation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      ACP_EXPECT_XCODE_BUILD: 16F6
+      ACP_EXPECT_SDK_VERSION: '15.5'
+    steps:
+      - name: Checkout approved preparation harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: preparation
+          persist-credentials: false
+      - name: Checkout exact upstream commit and recorded submodule
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: qhuyduong/AMDMicrophone
+          ref: c77833e1eef3b22df02f4b1d8f87e15e4e02f0c9
+          path: preparation/upstream
+          submodules: recursive
+          persist-credentials: false
+      - name: Require Intel host and available pinned Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          test -d "$DEVELOPER_DIR"
+      - name: Build Release and inspect without loading
+        shell: bash
+        run: bash preparation/tools/build-release.sh
+      - name: Retain candidate and evidence for seven days
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AMDMicrophone-c77833e-Release-x86_64
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            preparation/output/**/STATUS.txt
+            preparation/output/**/preparation.log
+            preparation/output/**/source-manifest*.json
+            preparation/output/**/available-tools.txt
+            preparation/output/**/xcode-version.txt
+            preparation/output/**/xcodebuild-discovery-error.txt
+            preparation/output/**/build-command.txt
+            preparation/output/**/build-settings*.json
+            preparation/output/**/build-settings-errors.txt
+            preparation/output/**/build.log
+            preparation/output/**/build-exit-code.txt
+            preparation/output/**/build-provenance.json
+            preparation/output/**/inspection/**
+            preparation/output/**/AMDMicrophone-*.zip
+            preparation/output/**/archive-sha256.txt
