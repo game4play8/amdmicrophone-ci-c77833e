@@ -9,6 +9,13 @@ exec > >(tee "$ACP_RUN/preparation.log") 2>&1
 printf 'AMDMicrophone Release preparation: %s\n' "$ACP_RUN"
 printf 'PREFLIGHT\n' > "$ACP_RUN/STATUS.txt"
 python3 "$ACP_ROOT/tools/verify_sources.py" "$ACP_RUN/source-manifest.json"
+ACP_PATCH="$ACP_ROOT/patches/candidato-dma-continuity.patch"
+printf '%s  %s\n' '4e13ef4adb40c3824dd09c152c830c20d9b75fd2dfa5786422b065517f79d063' "$ACP_PATCH" | /usr/bin/shasum -a 256 -c -
+/usr/bin/git -C "$ACP_ROOT/upstream" apply --check "$ACP_PATCH"
+/usr/bin/git -C "$ACP_ROOT/upstream" apply "$ACP_PATCH"
+/usr/bin/git -C "$ACP_ROOT/upstream" diff --check
+/usr/bin/git -C "$ACP_ROOT/upstream" diff > "$ACP_RUN/applied.patch"
+/usr/bin/cmp "$ACP_PATCH" "$ACP_RUN/applied.patch"
 
 {
     /usr/bin/sw_vers
@@ -67,8 +74,14 @@ if [ "$ACP_BUILD_EXIT" -ne 0 ]; then
     printf 'BUILD_FAILED\n' > "$ACP_RUN/STATUS.txt"
     exit "$ACP_BUILD_EXIT"
 fi
-python3 "$ACP_ROOT/tools/verify_sources.py" "$ACP_RUN/source-manifest-after.json"
+/usr/bin/git -C "$ACP_ROOT/upstream" diff --check
+/usr/bin/git -C "$ACP_ROOT/upstream" diff > "$ACP_RUN/applied-after.patch"
+/usr/bin/cmp "$ACP_PATCH" "$ACP_RUN/applied-after.patch"
+/usr/bin/git -C "$ACP_ROOT/upstream/MacKernelSDK" diff --exit-code
+/usr/bin/git -C "$ACP_ROOT/upstream/MacKernelSDK" diff --cached --exit-code
+
 python3 "$ACP_ROOT/tools/inspect_candidate.py" "$ACP_RUN/build/Release/AMDMicrophone.kext" "$ACP_RUN/inspection"
+/usr/bin/cp "$ACP_RUN/applied-after.patch" "$ACP_RUN/inspection/applied-source.patch"
 python3 - "$ACP_RUN" <<'PY'
 import datetime, hashlib, json, os, pathlib, sys
 root = pathlib.Path(sys.argv[1])
