@@ -1,0 +1,85 @@
+diff --git a/AMDMicrophone/AMDMicrophoneDevice.cpp b/AMDMicrophone/AMDMicrophoneDevice.cpp
+index 787e776..5c59514 100644
+--- a/AMDMicrophone/AMDMicrophoneDevice.cpp
++++ b/AMDMicrophone/AMDMicrophoneDevice.cpp
+@@ -189,6 +189,15 @@ IOReturn AMDMicrophoneDevice::startDMA()
+ 
+     writel(0x1, ACP_WOV_PDM_FIFO_FLUSH);
+     enableClock();
++
++    // The linear counter persists across streams. Align byte zero with the
++    // ring before DMA starts, so its modulo tracks the ring position.
++    dmaStartByteCount = getByteCount();
++    lastLoopCount = 0;
++    dmaInterruptCount = 0;
++    dmaTimestampCount = 0;
++    dmaMissedLoopCount = 0;
++
+     writel(0x1, ACP_WOV_PDM_ENABLE);
+     writel(0x1, ACP_WOV_PDM_DMA_ENABLE);
+ 
+@@ -203,8 +212,6 @@ IOReturn AMDMicrophoneDevice::startDMA()
+     if (timeout == ACP_COUNTER)
+         return kIOReturnTimeout;
+ 
+-    dmaStartByteCount = getByteCount();
+-    lastPeriodCount = 0;
+     return kIOReturnSuccess;
+ }
+ 
+@@ -285,9 +292,17 @@ void AMDMicrophoneDevice::interruptHandler()
+     val = readl(ACP_EXTERNAL_INTR_STAT);
+     if (val & BIT(ACP_PDM_DMA_STAT)) {
+         writel(BIT(ACP_PDM_DMA_STAT), ACP_EXTERNAL_INTR_STAT);
++        dmaInterruptCount++;
+         byteCount = getRelativeByteCount();
+-        if (byteCount % BUFFER_SIZE == 0)
++        // An interrupt may be delivered after the exact wrap byte.
++        UInt64 loopCount = byteCount / BUFFER_SIZE;
++        if (loopCount > lastLoopCount) {
++            if (loopCount > lastLoopCount + 1)
++                dmaMissedLoopCount += loopCount - lastLoopCount - 1;
++            lastLoopCount = loopCount;
++            dmaTimestampCount++;
+             audioEngine->takeTimeStamp();
++        }
+     }
+ }
+ 
+diff --git a/AMDMicrophone/AMDMicrophoneDevice.hpp b/AMDMicrophone/AMDMicrophoneDevice.hpp
+index b3dab99..2dc9f3f 100644
+--- a/AMDMicrophone/AMDMicrophoneDevice.hpp
++++ b/AMDMicrophone/AMDMicrophoneDevice.hpp
+@@ -78,7 +78,10 @@ class AMDMicrophoneDevice : public IOAudioDevice {
+     IOVirtualAddress baseAddr;
+     IOBufferMemoryDescriptor* dmaDescriptor;
+     UInt64 dmaStartByteCount = 0;
+-    UInt64 lastPeriodCount = 0;
++    UInt64 lastLoopCount = 0;
++    UInt64 dmaInterruptCount = 0;
++    UInt64 dmaTimestampCount = 0;
++    UInt64 dmaMissedLoopCount = 0;
+     bool dmaPrepared = false;
+ 
+     UInt32 readl(UInt32 reg);
+diff --git a/AMDMicrophone/AMDMicrophoneEngine.cpp b/AMDMicrophone/AMDMicrophoneEngine.cpp
+index ac5a7ae..d2df3f6 100644
+--- a/AMDMicrophone/AMDMicrophoneEngine.cpp
++++ b/AMDMicrophone/AMDMicrophoneEngine.cpp
+@@ -244,9 +244,14 @@ IOReturn AMDMicrophoneEngine::performAudioEngineStart()
+ IOReturn AMDMicrophoneEngine::performAudioEngineStop()
+ {
+     audioDevice->disableInterrupt();
+-    audioDevice->stopDMA();
++    IOReturn ret = audioDevice->stopDMA();
+ 
+-    return kIOReturnSuccess;
++    setProperty("DMAInterruptCount", audioDevice->dmaInterruptCount, 64);
++    setProperty("DMALoopTimestampCount", audioDevice->dmaTimestampCount, 64);
++    setProperty("DMAMissedLoopCount", audioDevice->dmaMissedLoopCount, 64);
++    setProperty("DMAFinalLoopCount", audioDevice->lastLoopCount, 64);
++
++    return ret;
+ }
+ 
+ IOReturn AMDMicrophoneEngine::performFormatChange(
