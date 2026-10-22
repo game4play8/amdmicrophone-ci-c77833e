@@ -81,7 +81,7 @@ fi
 /usr/bin/git -C "$ACP_ROOT/upstream/MacKernelSDK" diff --cached --exit-code
 
 python3 "$ACP_ROOT/tools/inspect_candidate.py" "$ACP_RUN/build/Release/AMDMicrophone.kext" "$ACP_RUN/inspection"
-/usr/bin/cp "$ACP_RUN/applied-after.patch" "$ACP_RUN/inspection/applied-source.patch"
+/bin/cp "$ACP_RUN/applied-after.patch" "$ACP_RUN/inspection/applied-source.patch"
 python3 - "$ACP_RUN" <<'PY'
 import datetime, hashlib, json, os, pathlib, sys
 root = pathlib.Path(sys.argv[1])
